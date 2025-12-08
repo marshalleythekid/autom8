@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Autom8 | AI Project Manager</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div id="app">
+      <aside class="sidebar">
+        <div class="logo">
+          <h1>autom8</h1>
+        </div>
+        <nav>
+          <a href="#" class="active">Dashboard</a>
+          <a href="#">Projects</a>
+          <a href="#">Team</a>
+          <a href="#">Settings</a>
+        </nav>
+      </aside>
+
+      <main class="main-content">
+        <header>
+          <h2>Dashboard</h2>
+          <div class="user-profile">
+            <span>Welcome, Javier</span>
+            <div class="avatar">J</div>
+          </div>
+        </header>
+
+        <section class="input-section">
+          <div class="card">
+            <h3>Create New Brief</h3>
+            <p>Describe your feature (e.g., "We need a login page with Google Auth")</p>
+            <textarea id="briefInput" placeholder="Type your requirements here..."></textarea>
+            <button id="generateBtn" class="btn-primary">
+              <span class="btn-text">Automate Tasks</span>
+              <span class="loader" style="display: none;"></span>
+            </button>
+          </div>
+        </section>
+
+        <section class="stats-section" id="statsSection" style="display: none;">
+            <h3>Project Status</h3>
+            <div class="progress-grid">
+                <div class="progress-card">
+                    <label>UI/UX Design</label>
+                    <div class="progress-bar"><div class="fill" style="width: 100%"></div></div>
+                </div>
+                <div class="progress-card">
+                    <label>Backend API</label>
+                    <div class="progress-bar"><div class="fill pending" style="width: 40%"></div></div>
+                </div>
+                <div class="progress-card">
+                    <label>Frontend Integ.</label>
+                    <div class="progress-bar"><div class="fill warning" style="width: 10%"></div></div>
+                </div>
+            </div>
+        </section>
+
+        <section class="tasks-section" id="tasksSection" style="display: none;">
+          <div class="table-header">
+            <h3>Generated Engineering Tasks</h3>
+            <button class="btn-secondary">Export to Jira</button>
+          </div>
+          
+          <div class="table-container">
+            <table>
+              <thead>
+                <tr>
+                  <th>Task Name</th>
+                  <th>Type</th>
+                  <th>Assignee</th>
+                  <th>Status</th>
+                  <th>Priority</th>
+                  <th>Due Date</th>
+                </tr>
+              </thead>
+              <tbody id="taskTableBody">
+                </tbody>
+            </table>
+          </div>
+        </section>
+      </main>
+    </div>
+    
+    <script type="module" src="/main.ts"></script>
+  </body>
+</html>

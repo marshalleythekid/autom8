@@ -1,0 +1,176 @@
+:root {
+  --primary-color: #FF5722; /* The Autom8 Orange */
+  --bg-color: #F4F7FE;
+  --card-bg: #FFFFFF;
+  --text-dark: #2B3674;
+  --text-grey: #A3AED0;
+  --border-color: #E0E5F2;
+  --success: #05CD99;
+  --warning: #FFB547;
+  --danger: #EE5D50;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: 'Inter', sans-serif;
+  background-color: var(--bg-color);
+  color: var(--text-dark);
+}
+
+#app {
+  display: flex;
+  height: 100vh;
+}
+
+/* Sidebar */
+.sidebar {
+  width: 250px;
+  background: white;
+  padding: 2rem;
+  border-right: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+}
+
+.logo h1 {
+  font-weight: 800;
+  font-size: 24px;
+  margin-bottom: 3rem;
+  letter-spacing: -1px;
+}
+
+.sidebar nav a {
+  display: block;
+  padding: 1rem;
+  color: var(--text-grey);
+  text-decoration: none;
+  font-weight: 500;
+  margin-bottom: 0.5rem;
+  border-radius: 8px;
+  transition: 0.3s;
+}
+
+.sidebar nav a.active, .sidebar nav a:hover {
+  background-color: var(--bg-color);
+  color: var(--primary-color);
+  font-weight: 700;
+}
+
+/* Main Content */
+.main-content {
+  flex: 1;
+  padding: 2rem;
+  overflow-y: auto;
+}
+
+header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2rem;
+}
+
+.card {
+  background: var(--card-bg);
+  padding: 2rem;
+  border-radius: 16px;
+  box-shadow: 0px 4px 12px rgba(0,0,0,0.02);
+}
+
+/* Input Section */
+.input-section textarea {
+  width: 100%;
+  height: 100px;
+  margin: 1rem 0;
+  padding: 1rem;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  font-family: inherit;
+  resize: none;
+}
+
+.btn-primary {
+  background-color: var(--primary-color);
+  color: white;
+  border: none;
+  padding: 12px 24px;
+  border-radius: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.btn-primary:hover {
+  opacity: 0.9;
+}
+
+/* Table Styles */
+.tasks-section {
+  margin-top: 2rem;
+  background: white;
+  padding: 1.5rem;
+  border-radius: 16px;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 1rem;
+}
+
+th {
+  text-align: left;
+  color: var(--text-grey);
+  font-weight: 500;
+  padding: 1rem;
+  border-bottom: 1px solid var(--border-color);
+}
+
+td {
+  padding: 1rem;
+  border-bottom: 1px solid var(--border-color);
+  font-size: 14px;
+}
+
+/* Status Badges */
+.badge {
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.priority-high { color: var(--danger); background: #FFEEEE; }
+.priority-med { color: var(--warning); background: #FFF8E7; }
+.priority-low { color: var(--success); background: #E6FFF6; }
+
+/* Progress Bars */
+.stats-section { margin-top: 2rem; }
+.progress-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-top: 1rem; }
+.progress-card { background: white; padding: 1.5rem; border-radius: 12px; }
+.progress-bar { height: 8px; background: #EEE; border-radius: 4px; margin-top: 10px; overflow: hidden; }
+.fill { height: 100%; background: var(--success); }
+.fill.pending { background: var(--primary-color); }
+.fill.warning { background: var(--warning); }
+
+/* Loader */
+.loader {
+  width: 16px;
+  height: 16px;
+  border: 2px solid #FFF;
+  border-bottom-color: transparent;
+  border-radius: 50%;
+  animation: rotation 1s linear infinite;
+}
+
+@keyframes rotation {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
