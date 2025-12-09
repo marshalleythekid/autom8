@@ -1,3 +1,4 @@
+//backend
 // --- FIREBASE IMPORTS ---
 import { initializeApp } from "firebase/app";
 import { getFunctions, httpsCallable } from "firebase/functions";
