@@ -26,7 +26,8 @@ const firebaseConfig = {
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app, "autom8db"); 
-const functions = getFunctions(app); // Client SDK for calling functions
+// Explicitly tell the app to look in Jakarta
+const functions = getFunctions(app, "asia-southeast2"); // Client SDK for calling functions
 
 // 3. TYPES (Frontend Only)
 interface Task {
