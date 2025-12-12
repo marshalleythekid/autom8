@@ -15,16 +15,14 @@
   "overrides": {
     "vite": "npm:rolldown-vite@7.2.5"
   },
-  
   "dependencies": {
     "@google/genai": "^1.32.0",
+    "@google/generative-ai": "^0.24.1",
     "firebase": "^12.6.0",
     "firebase-admin": "^13.6.0",
     "firebase-functions": "^7.0.1"
   },
- 
   "engines": {
     "node": "20"
   }
-
 }

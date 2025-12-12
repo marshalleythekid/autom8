@@ -7,8 +7,6 @@ import { GoogleGenAI } from "@google/genai";
 const geminiApiKey = defineSecret("GEMINI_API_KEY");
 
 // 2. SCHEMA DEFINITION
-// FIX: Using string literals instead of importing 'Type' or 'SchemaType'
-// The new SDK accepts "ARRAY", "OBJECT", "STRING" directly.
 const taskSchema = {
   type: "ARRAY",
   items: {
@@ -23,20 +21,21 @@ const taskSchema = {
   },
 };
 
+// 3. THE FUNCTION
 export const generateTasks = onCall(
-  { secrets: [geminiApiKey] },
+  { secrets: [geminiApiKey], region: "asia-southeast2" }, // Inject the secret here
   async (request) => {
+    // Extract the text from the request
     const brief = (request.data as { text: string }).text;
 
     if (!brief) {
       throw new HttpsError("invalid-argument", "Brief text is required.");
     }
 
-    // FIX: Constructor expects an object, not a string
+    // Initialize AI with the secret key
     const ai = new GoogleGenAI({ apiKey: geminiApiKey.value() });
 
     try {
-      // FIX: Use 'ai.models.generateContent' (New SDK Syntax)
       const response = await ai.models.generateContent({
         model: "gemini-1.5-flash",
         contents: [
@@ -55,8 +54,6 @@ export const generateTasks = onCall(
         },
       });
 
-      // FIX: 'text' is a property, NOT a function in the new SDK
-      // We also handle null/undefined safely
       const jsonText = response.text ? response.text.trim() : "[]";
       
       let structuredTasks;
@@ -64,7 +61,6 @@ export const generateTasks = onCall(
         structuredTasks = JSON.parse(jsonText);
       } catch (e) {
         console.error("JSON Parse Error:", jsonText);
-        // Fallback: Return empty list rather than crashing
         structuredTasks = [];
       }
 
