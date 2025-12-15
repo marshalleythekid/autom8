@@ -1,32 +1,71 @@
-/**
- * Import function triggers from their respective submodules:
- *
- * import {onCall} from "firebase-functions/v2/https";
- * import {onDocumentWritten} from "firebase-functions/v2/firestore";
- *
- * See a full list of supported triggers at https://firebase.google.com/docs/functions
- */
+// functions/src/index.ts
+// --- BACKEND AI ENGINE ---
 
-import {setGlobalOptions} from "firebase-functions";
-import {onRequest} from "firebase-functions/https";
-import * as logger from "firebase-functions/logger";
+import { onCall, HttpsError } from "firebase-functions/v2/https";
+import { defineSecret } from "firebase-functions/params";
+import { onInit } from "firebase-functions/v2/core"; 
+import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai"; 
 
-// Start writing functions
-// https://firebase.google.com/docs/functions/typescript
+const geminiApiKey = defineSecret("GEMINI_API_KEY");
 
-// For cost control, you can set the maximum number of containers that can be
-// running at the same time. This helps mitigate the impact of unexpected
-// traffic spikes by instead downgrading performance. This limit is a
-// per-function limit. You can override the limit for each function using the
-// `maxInstances` option in the function's options, e.g.
-// `onRequest({ maxInstances: 5 }, (req, res) => { ... })`.
-// NOTE: setGlobalOptions does not apply to functions using the v1 API. V1
-// functions should each use functions.runWith({ maxInstances: 10 }) instead.
-// In the v1 API, each function can only serve one request per container, so
-// this will be the maximum concurrent request count.
-setGlobalOptions({ maxInstances: 10 });
+// Global variables for Fast Startup
+let genAI: GoogleGenerativeAI;
+let model: any;
 
-// export const helloWorld = onRequest((request, response) => {
-//   logger.info("Hello logs!", {structuredData: true});
-//   response.send("Hello from Firebase!");
-// });
+// Initialize the AI *before* the request comes in
+onInit(() => {
+  genAI = new GoogleGenerativeAI(geminiApiKey.value());
+  model = genAI.getGenerativeModel({
+    model: "gemini-1.5-flash",
+    generationConfig: {
+      responseMimeType: "application/json",
+      // 'as any' fixes the TypeScript strict error
+      responseSchema: {
+        type: SchemaType.ARRAY,
+        items: {
+          type: SchemaType.OBJECT,
+          properties: {
+            id: { type: SchemaType.STRING },
+            name: { type: SchemaType.STRING },
+            type: { type: SchemaType.STRING, enum: ["Backend", "Frontend", "QA", "Design"] },
+            priority: { type: SchemaType.STRING, enum: ["High", "Medium", "Low"] },
+          },
+          required: ["name", "type", "priority"],
+        },
+      } as any, 
+    },
+  });
+});
+
+export const generateTasks = onCall(
+  { 
+    secrets: [geminiApiKey], 
+    region: "asia-southeast2", // Jakarta
+    timeoutSeconds: 60,        // Prevent timeout
+    maxInstances: 10
+  },
+  async (request) => {
+    const brief = (request.data as { text: string }).text;
+    if (!brief) throw new HttpsError("invalid-argument", "Brief is required");
+
+    try {
+      // Use the pre-loaded model
+      const result = await model.generateContent(
+        `You are a Technical PM. Convert this brief into technical tasks: "${brief}"`
+      );
+
+      const jsonText = result.response.text();
+      let structuredTasks;
+      try {
+        structuredTasks = JSON.parse(jsonText);
+      } catch (e) {
+        structuredTasks = [];
+      }
+      return { tasks: structuredTasks };
+
+    } catch (error) {
+      console.error("AI Error:", error);
+      throw new HttpsError("internal", "AI processing failed.");
+    }
+  }
+);
