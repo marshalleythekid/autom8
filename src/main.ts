@@ -1,6 +1,6 @@
-// --- FIREBASE IMPORTS ---
+// --- FIREBASE IMPORTS (Browser-compatible only) ---
 import { initializeApp } from "firebase/app";
-import { getFunctions, httpsCallable } from "firebase/functions";
+import { getFunctions, httpsCallable } from "firebase/functions"; 
 import { 
   getFirestore, 
   collection, 
@@ -21,7 +21,12 @@ const firebaseConfig = {
 };
 
 const app = initializeApp(firebaseConfig);
-const db = getFirestore(app, "autom8db"); 
+const db = getFirestore(app); 
+
+// These are for the future LIVE AI integration. Keep them commented for now.
+const functions = getFunctions(app); 
+// const generateTasksCloudFunction = httpsCallable(functions, 'generateTasks'); 
+
 
 // --- TYPES ---
 interface Task {
@@ -29,7 +34,7 @@ interface Task {
   name: string;
   type: 'Backend' | 'Frontend' | 'QA' | 'Design';
   assignee: string;
-  status: 'Done' | 'In Progress' | 'Pending' | 'Unassigned'; // Added 'Unassigned'
+  status: 'Done' | 'In Progress' | 'Pending' | 'Unassigned'; 
   priority: 'High' | 'Medium' | 'Low';
   dueDate: string;
 }
@@ -41,69 +46,59 @@ interface TeamMember {
   load: number;
 }
 
-// Global State for Team Members
+// Global State for Team Members (updated by loadTeamFromDB)
 let teamMembers: TeamMember[] = [];
 
 
 // --- SMART MOCK GENERATOR (The "Brain") ---
 
-
-const TASK_TEMPLATES = [
-  { name: "Design UI Mockups & User Flow", type: "Design" as const, priority: "Medium" as const },
-  { name: "Develop Core API Endpoints", type: "Backend" as const, priority: "High" as const },
-  { name: "Implement Responsive Components", type: "Frontend" as const, priority: "High" as const },
-  { name: "Database Schema Design", type: "Backend" as const, priority: "High" as const },
-  { name: "Unit & Integration Testing", type: "QA" as const, priority: "Low" as const },
-  { name: "Final Polish & Copywriting", type: "Design" as const, priority: "Low" as const }
-];
-
-/**
- * Finds the best team member for a specific role
- */
 function assignTaskToExpert(taskType: string): string {
-    // Filter the REAL team list from Firestore for matching roles
     const candidates = teamMembers.filter(m => m.role === taskType);
-
     if (candidates.length === 0) {
-        return "Unassigned"; // No one found with this skill
+        return "Unassigned"; 
     }
-
-    // Smart Move: Pick the person with the lowest load, or just random for now
     const randomExpert = candidates[Math.floor(Math.random() * candidates.length)];
     return randomExpert.name;
 }
 
 
-// --- CORE LOGIC ---
+// --- CORE LOGIC (Simulates AI Call) ---
+
+// --- CORE LOGIC (Real AI Call) ---
 
 async function generateTasksFromBrief(text: string): Promise<Task[]> {
-  console.log("Analyzing brief against current team roster...");
+  console.log("Sending brief to AI Engine...", text);
 
-  // Mocking the AI processing time
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      
-      // GENERATE DYNAMIC TASKS
-      const dynamicTasks: Task[] = TASK_TEMPLATES.map((template, index) => {
-        return {
-            id: `TSK-${Date.now()}-${index}`,
-            name: template.name,
-            type: template.type,
-            // HERE IS THE MAGIC: We ask our helper function to find a real person
-            assignee: assignTaskToExpert(template.type), 
-            status: "Pending",
-            priority: template.priority,
-            dueDate: "2025-12-20"
-        };
-      });
+  try {
+    // 1. Call the Cloud Function
+    const generateTasksFn = httpsCallable(functions, 'generateTasks');
+    const result = await generateTasksFn({ text: text });
 
-      resolve(dynamicTasks);
-    }, 1500);
-  });
+    // 2. Get the Real Data from Gemini
+    const data = result.data as { tasks: any[] };
+
+    // 3. Convert it to your App's format
+    const aiTasks: Task[] = data.tasks.map((t, index) => ({
+        id: t.id || `AI-${Date.now()}-${index}`,
+        name: t.name,
+        type: t.type || 'Backend',
+        // Smart Assignment: Find a real team member!
+        assignee: assignTaskToExpert(t.type || 'Backend'), 
+        status: 'Pending',
+        priority: t.priority || 'Medium',
+        dueDate: "2025-12-25"
+    }));
+
+    return aiTasks;
+
+  } catch (error) {
+    console.error("Cloud Function Error:", error);
+    alert("Failed to connect to AI. Check console for details.");
+    return []; 
+  }
 }
 
-
-// --- DOM ELEMENTS ---
+// --- DOM ELEMENTS (Your existing DOM variables) ---
 const briefInput = document.getElementById('briefInput') as HTMLTextAreaElement;
 const generateBtn = document.getElementById('generateBtn') as HTMLButtonElement;
 const tasksSection = document.getElementById('tasksSection') as HTMLElement;
@@ -111,8 +106,6 @@ const statsSection = document.getElementById('statsSection') as HTMLElement;
 const tableBody = document.getElementById('taskTableBody') as HTMLElement;
 const loader = document.querySelector('.loader') as HTMLElement;
 const btnText = document.querySelector('.btn-text') as HTMLElement;
-
-// Team Elements
 const teamTableBody = document.getElementById('teamTableBody') as HTMLElement;
 const addTeamForm = document.getElementById('addTeamForm') as HTMLFormElement;
 const memberNameInput = document.getElementById('memberName') as HTMLInputElement;
@@ -121,7 +114,7 @@ const navLinks = document.querySelectorAll('.sidebar nav a');
 const views = document.querySelectorAll('.content-view');
 
 
-// --- DATABASE FUNCTIONS (REAL) ---
+// --- DATABASE FUNCTIONS (Your existing Firestore calls) ---
 
 async function loadTeamFromDB() {
   const querySnapshot = await getDocs(collection(db, "team_members"));
@@ -131,7 +124,6 @@ async function loadTeamFromDB() {
     const data = doc.data() as Omit<TeamMember, 'id'>;
     teamMembers.push({ id: doc.id, ...data });
   });
-  
   renderTeamTable(); 
 }
 
@@ -161,15 +153,12 @@ async function removeTeamMemberFromDB(id: string) {
 }
 
 
-// --- RENDER FUNCTIONS ---
+// --- RENDER FUNCTIONS & EVENT LISTENERS ---
 
 function renderTaskTable(tasks: Task[]) {
   tableBody.innerHTML = ''; 
-
   tasks.forEach(task => {
     const row = document.createElement('tr');
-    
-    // Logic to handle "Unassigned" styling
     const avatar = task.assignee === "Unassigned" 
         ? `<div style="width:24px; height:24px; background:#EE5D50; border-radius:50%; color:white; text-align:center; line-height:24px; font-size:14px;">?</div>` 
         : `<div style="width:24px; height:24px; background:#EEE; border-radius:50%; text-align:center; line-height:24px; font-size:10px;">${task.assignee.charAt(0)}</div>`;
@@ -190,14 +179,12 @@ function renderTaskTable(tasks: Task[]) {
       <td><span class="badge ${getPriorityClass(task.priority)}">${task.priority}</span></td>
       <td>${task.dueDate}</td>
     `;
-    
     tableBody.appendChild(row);
   });
 }
 
 function renderTeamTable() {
     teamTableBody.innerHTML = ''; 
-    
     teamMembers.forEach(member => {
         const row = document.createElement('tr');
         row.innerHTML = `
@@ -222,8 +209,6 @@ function renderTeamTable() {
     });
 }
 
-
-// --- HELPERS ---
 function getPriorityClass(priority: string) {
   if (priority === 'High') return 'priority-high';
   if (priority === 'Medium') return 'priority-med';
@@ -233,12 +218,9 @@ function getPriorityClass(priority: string) {
 function getStatusColor(status: string) {
   if (status === 'Done') return '#05CD99';
   if (status === 'In Progress') return '#FFB547';
-  if (status === 'Unassigned') return '#EE5D50'; // Red for warning
+  if (status === 'Unassigned') return '#EE5D50'; 
   return '#A3AED0';
 }
-
-
-// --- EVENT LISTENERS ---
 
 generateBtn.addEventListener('click', async () => {
   const text = briefInput.value;
@@ -291,4 +273,4 @@ navLinks.forEach(link => {
 
 // INIT
 document.getElementById('dashboardSection')!.style.display = 'block';
-loadTeamFromDB(); // Fetch real team data on start
+loadTeamFromDB();
