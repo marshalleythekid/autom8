@@ -1,25 +1,24 @@
 // functions/src/index.ts
-// --- BACKEND AI ENGINE ---
-
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { defineSecret } from "firebase-functions/params";
-import { onInit } from "firebase-functions/v2/core"; 
+import { onInit } from "firebase-functions/v2/core"; // <--- The Fix
 import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai"; 
 
 const geminiApiKey = defineSecret("GEMINI_API_KEY");
 
-// Global variables for Fast Startup
+// 1. Global variables (Empty at first)
 let genAI: GoogleGenerativeAI;
 let model: any;
 
-// Initialize the AI *before* the request comes in
+// 2. THE FIX: Initialize AI only when the server starts
 onInit(() => {
+  console.log("Initializing Gemini AI...");
   genAI = new GoogleGenerativeAI(geminiApiKey.value());
+  
   model = genAI.getGenerativeModel({
     model: "gemini-1.5-flash",
     generationConfig: {
       responseMimeType: "application/json",
-      // 'as any' fixes the TypeScript strict error
       responseSchema: {
         type: SchemaType.ARRAY,
         items: {
@@ -35,13 +34,16 @@ onInit(() => {
       } as any, 
     },
   });
+  console.log("Gemini AI Ready.");
 });
 
+// 3. The Function
 export const generateTasks = onCall(
   { 
+    cors: true,                // <--- Keeps the "Allow Localhost" fix
     secrets: [geminiApiKey], 
-    region: "asia-southeast2", // Jakarta
-    timeoutSeconds: 60,        // Prevent timeout
+    region: "asia-southeast2", 
+    timeoutSeconds: 60,        
     maxInstances: 10
   },
   async (request) => {
@@ -49,7 +51,7 @@ export const generateTasks = onCall(
     if (!brief) throw new HttpsError("invalid-argument", "Brief is required");
 
     try {
-      // Use the pre-loaded model
+      // The 'model' is already ready because onInit ran first
       const result = await model.generateContent(
         `You are a Technical PM. Convert this brief into technical tasks: "${brief}"`
       );
