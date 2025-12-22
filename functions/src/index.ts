@@ -1,61 +1,55 @@
-<<<<<<< HEAD
 // functions/src/index.ts
-import { onCall } from "firebase-functions/v2/https";
+import { onCall, HttpsError } from "firebase-functions/v2/https";
+import { defineSecret } from "firebase-functions/params";
+import { GoogleGenerativeAI } from "@google/generative-ai"; 
 
-// Simple "Hello World" function to test connection
+const geminiApiKey = defineSecret("GEMINI_API_KEY");
+
+// 1. GLOBAL VARIABLE (Lazy Cache)
+// We keep this outside the function so it stays alive between requests.
+let cachedModel: any = null;
+
 export const generateTasks = onCall(
   { 
     cors: true, 
-    region: "asia-southeast2" 
+    secrets: [geminiApiKey], 
+    region: "asia-southeast2", 
+    timeoutSeconds: 60,
   },
   async (request) => {
-    console.log("Health Check: Request received!");
-    return { 
-      tasks: [
-        { 
-            id: "test-1", 
-            name: "Connection Successful!", 
-            type: "Backend", 
-            priority: "High", 
-            status: "Done", 
-            assignee: "System",
-            dueDate: "Today"
-        }
-      ] 
-    };
+    const brief = (request.data as { text: string }).text;
+    console.log("Received Brief:", brief);
+
+    if (!brief) throw new HttpsError("invalid-argument", "Brief is required");
+
+    try {
+      // 2. SAFETY CHECK: Initialize AI only if it's missing
+      if (!cachedModel) {
+        console.log("⚠️ Cold Start: Loading Gemini Model...");
+        const genAI = new GoogleGenerativeAI(geminiApiKey.value());
+        // Bare Metal Mode (No Schema)
+        cachedModel = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+      } else {
+        console.log("⚡ Warm Start: Reusing existing Gemini Model.");
+      }
+
+      // 3. Generate Content
+      const result = await cachedModel.generateContent(
+        `You are a Technical PM. Convert this brief into technical tasks.
+         RETURN ONLY RAW JSON. No markdown blocks.
+         Array of objects with: id, name, priority, and taskType (Frontend, Backend, Design, or QA).
+         Brief: "${brief}"`
+      );
+
+      // Clean and Parse
+      let jsonText = result.response.text();
+      jsonText = jsonText.replace(/```json/g, '').replace(/```/g, '').trim();
+
+      return { tasks: JSON.parse(jsonText) };
+
+    } catch (error: any) {
+      console.error("AI Error:", error);
+      throw new HttpsError("internal", error.message || "Unknown AI Error");
+    }
   }
 );
-=======
-/**
- * Import function triggers from their respective submodules:
- *
- * import {onCall} from "firebase-functions/v2/https";
- * import {onDocumentWritten} from "firebase-functions/v2/firestore";
- *
- * See a full list of supported triggers at https://firebase.google.com/docs/functions
- */
-
-import {setGlobalOptions} from "firebase-functions";
-import {onRequest} from "firebase-functions/https";
-import * as logger from "firebase-functions/logger";
-
-// Start writing functions
-// https://firebase.google.com/docs/functions/typescript
-
-// For cost control, you can set the maximum number of containers that can be
-// running at the same time. This helps mitigate the impact of unexpected
-// traffic spikes by instead downgrading performance. This limit is a
-// per-function limit. You can override the limit for each function using the
-// `maxInstances` option in the function's options, e.g.
-// `onRequest({ maxInstances: 5 }, (req, res) => { ... })`.
-// NOTE: setGlobalOptions does not apply to functions using the v1 API. V1
-// functions should each use functions.runWith({ maxInstances: 10 }) instead.
-// In the v1 API, each function can only serve one request per container, so
-// this will be the maximum concurrent request count.
-setGlobalOptions({ maxInstances: 10 });
-
-// export const helloWorld = onRequest((request, response) => {
-//   logger.info("Hello logs!", {structuredData: true});
-//   response.send("Hello from Firebase!");
-// });
->>>>>>> parent of 0101a6a (fixing database for teams)

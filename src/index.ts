@@ -38,7 +38,7 @@ export const generateTasks = onCall(
     try {
       // FIX: Use 'ai.models.generateContent' (New SDK Syntax)
       const response = await ai.models.generateContent({
-        model: "gemini-1.5-flash",
+        model: "gemini-2.0-flash",
         contents: [
           {
             role: "user",
