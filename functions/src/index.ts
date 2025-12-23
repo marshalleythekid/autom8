@@ -1,55 +1,63 @@
 // functions/src/index.ts
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { defineSecret } from "firebase-functions/params";
-import { GoogleGenerativeAI } from "@google/generative-ai"; 
+import { GoogleGenAI } from "@google/genai";
 
 const geminiApiKey = defineSecret("GEMINI_API_KEY");
 
-// 1. GLOBAL VARIABLE (Lazy Cache)
-// We keep this outside the function so it stays alive between requests.
-let cachedModel: any = null;
+// Define Schema for stricter output
+const taskSchema = {
+  type: "ARRAY",
+  items: {
+    type: "OBJECT",
+    properties: {
+      id: { type: "STRING" },
+      name: { type: "STRING" },
+      // Using 'taskType' to avoid keyword conflicts
+      taskType: { type: "STRING", enum: ["Backend", "Frontend", "QA", "Design"] },
+      priority: { type: "STRING", enum: ["High", "Medium", "Low"] },
+    },
+    required: ["name", "taskType", "priority"],
+  },
+};
 
 export const generateTasks = onCall(
   { 
-    cors: true, 
+    cors: true,                // <--- 1. FIX CORS
     secrets: [geminiApiKey], 
-    region: "asia-southeast2", 
+    region: "asia-southeast2", // <--- 2. FIX REGION (Jakarta)
     timeoutSeconds: 60,
   },
   async (request) => {
     const brief = (request.data as { text: string }).text;
-    console.log("Received Brief:", brief);
-
     if (!brief) throw new HttpsError("invalid-argument", "Brief is required");
 
+    const ai = new GoogleGenAI({ apiKey: geminiApiKey.value() });
+
     try {
-      // 2. SAFETY CHECK: Initialize AI only if it's missing
-      if (!cachedModel) {
-        console.log("⚠️ Cold Start: Loading Gemini Model...");
-        const genAI = new GoogleGenerativeAI(geminiApiKey.value());
-        // Bare Metal Mode (No Schema)
-        cachedModel = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
-      } else {
-        console.log("⚡ Warm Start: Reusing existing Gemini Model.");
+      const response = await ai.models.generateContent({
+        model: "gemini-2.0-flash",
+        contents: [{ role: "user", parts: [{ text: `Convert to tasks: "${brief}"` }] }],
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: taskSchema,
+        },
+      });
+
+      // Handle response safely
+      const jsonText = response.text ? response.text.trim() : "[]";
+      let structuredTasks = [];
+      try {
+        structuredTasks = JSON.parse(jsonText);
+      } catch (e) {
+        console.error("JSON Parse Error", e);
       }
 
-      // 3. Generate Content
-      const result = await cachedModel.generateContent(
-        `You are a Technical PM. Convert this brief into technical tasks.
-         RETURN ONLY RAW JSON. No markdown blocks.
-         Array of objects with: id, name, priority, and taskType (Frontend, Backend, Design, or QA).
-         Brief: "${brief}"`
-      );
-
-      // Clean and Parse
-      let jsonText = result.response.text();
-      jsonText = jsonText.replace(/```json/g, '').replace(/```/g, '').trim();
-
-      return { tasks: JSON.parse(jsonText) };
+      return { tasks: structuredTasks };
 
     } catch (error: any) {
       console.error("AI Error:", error);
-      throw new HttpsError("internal", error.message || "Unknown AI Error");
+      throw new HttpsError("internal", "AI processing failed.");
     }
   }
 );
