@@ -1,14 +1,21 @@
 // functions/src/index.ts
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { defineSecret } from "firebase-functions/params";
+import { onInit } from "firebase-functions/v2/core"; // Timeout Fix
 import { GoogleGenAI } from "@google/genai";
 
-// 1. SECURE KEY MANAGEMENT
 const geminiApiKey = defineSecret("GEMINI_API_KEY");
 
-// 2. SCHEMA DEFINITION
-// FIX: Using string literals instead of importing 'Type' or 'SchemaType'
-// The new SDK accepts "ARRAY", "OBJECT", "STRING" directly.
+// Global AI Client (Lazy Loaded)
+let ai: GoogleGenAI;
+
+// 1. INITIALIZE ON SERVER START (Prevents Timeout)
+onInit(() => {
+  console.log("🔥 Cold Start: Connecting to Gemini...");
+  ai = new GoogleGenAI({ apiKey: geminiApiKey.value() });
+});
+
+// 2. SCHEMA (Strict JSON)
 const taskSchema = {
   type: "ARRAY",
   items: {
@@ -16,61 +23,47 @@ const taskSchema = {
     properties: {
       id: { type: "STRING" },
       name: { type: "STRING" },
-      type: { type: "STRING", enum: ["Backend", "Frontend", "QA", "Design"] },
+      taskType: { type: "STRING", enum: ["Backend", "Frontend", "QA", "Design"] },
       priority: { type: "STRING", enum: ["High", "Medium", "Low"] },
     },
-    required: ["name", "type", "priority"],
+    required: ["name", "taskType", "priority"],
   },
 };
 
 export const generateTasks = onCall(
-  { secrets: [geminiApiKey] },
+  { 
+    cors: true,                 // <--- Fixes CORS Error
+    secrets: [geminiApiKey], 
+    region: "asia-southeast2",  // <--- Fixes Region Mismatch
+    timeoutSeconds: 60,         // <--- Gives AI time to think
+  },
   async (request) => {
     const brief = (request.data as { text: string }).text;
-
-    if (!brief) {
-      throw new HttpsError("invalid-argument", "Brief text is required.");
-    }
-
-    // FIX: Constructor expects an object, not a string
-    const ai = new GoogleGenAI({ apiKey: geminiApiKey.value() });
+    if (!brief) throw new HttpsError("invalid-argument", "Brief is required");
 
     try {
-      // FIX: Use 'ai.models.generateContent' (New SDK Syntax)
+      // 3. GENERATE (Using the global 'ai' instance)
       const response = await ai.models.generateContent({
         model: "gemini-2.0-flash",
-        contents: [
-          {
-            role: "user",
-            parts: [
-              {
-                text: `You are a Technical PM. Convert this brief into technical tasks: "${brief}"`,
-              },
-            ],
-          },
-        ],
+        contents: [{ role: "user", parts: [{ text: `Convert to tasks: "${brief}"` }] }],
         config: {
           responseMimeType: "application/json",
           responseSchema: taskSchema,
         },
       });
 
-      // FIX: 'text' is a property, NOT a function in the new SDK
-      // We also handle null/undefined safely
+      // 4. SAFE PARSING
       const jsonText = response.text ? response.text.trim() : "[]";
-      
-      let structuredTasks;
+      let structuredTasks = [];
       try {
         structuredTasks = JSON.parse(jsonText);
       } catch (e) {
-        console.error("JSON Parse Error:", jsonText);
-        // Fallback: Return empty list rather than crashing
-        structuredTasks = [];
+        console.error("JSON Parse Error", e);
       }
 
       return { tasks: structuredTasks };
 
-    } catch (error) {
+    } catch (error: any) {
       console.error("AI Error:", error);
       throw new HttpsError("internal", "AI processing failed.");
     }
