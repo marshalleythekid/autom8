@@ -8,7 +8,8 @@ import {
   addDoc, 
   getDocs, 
   deleteDoc, 
-  doc 
+  doc,
+  updateDoc // <--- Add this!
 } from "firebase/firestore";
 
 // --- CONFIGURATION ---
@@ -23,7 +24,7 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 
-// 1. DATABASE (Keeps your custom DB name)
+// 1. DATABASE
 const db = getFirestore(app, "autom8db"); 
 
 // 2. FUNCTIONS (Connects to Jakarta)
@@ -50,16 +51,216 @@ interface TeamMember {
 
 // Global State
 let teamMembers: TeamMember[] = [];
+let currentGeneratedTasks: Task[] = []; 
 
 
 // --- HELPER: Finds the best team member ---
 function assignTaskToExpert(taskType: string): string {
-    // Basic matching logic
     const candidates = teamMembers.filter(m => m.role === taskType);
     if (candidates.length === 0) return "Unassigned";
     const randomExpert = candidates[Math.floor(Math.random() * candidates.length)];
     return randomExpert.name;
 }
+
+
+// --- PROJECT MANAGEMENT FUNCTIONS ---
+async function loadProjectsFromDB() {
+    const grid = document.getElementById('projectGrid');
+    if (!grid) return;
+    
+    grid.innerHTML = '<p>Loading projects...</p>';
+    
+    try {
+        const querySnapshot = await getDocs(collection(db, "projects"));
+        grid.innerHTML = ''; 
+
+        if (querySnapshot.empty) {
+            grid.innerHTML = '<p style="color: #A3AED0;">No projects yet. Go to Dashboard to create one!</p>';
+            return;
+        }
+
+        querySnapshot.forEach((doc) => {
+            const data = doc.data();
+            
+            // Create a "Folder" Card
+            const card = document.createElement('div');
+            card.className = 'card project-card';
+            card.style.cursor = 'pointer';
+            card.style.transition = 'transform 0.2s';
+            card.innerHTML = `
+                <div style="display:flex; justify-content:space-between; align-items:start; margin-bottom:10px;">
+                    <div style="width:40px; height:40px; background:#E0E5F2; border-radius:8px; display:flex; align-items:center; justify-content:center; font-size:20px;">
+                        📁
+                    </div>
+                    <span class="badge priority-med">${data.status || 'Active'}</span>
+                </div>
+                <h4 style="margin:0; font-size:16px;">${data.name}</h4>
+                <p style="color:#A3AED0; font-size:12px; margin-top:5px;">${data.taskCount || 0} Tasks</p>
+                <div style="font-size:10px; color:#A3AED0; margin-top:15px;">
+                    Created: ${new Date(data.createdAt).toLocaleDateString()}
+                </div>
+            `;
+
+            // Click to Open Folder
+            card.addEventListener('click', () => openProject(doc.id, data.name));
+            
+            card.onmouseenter = () => card.style.transform = 'translateY(-5px)';
+            card.onmouseleave = () => card.style.transform = 'translateY(0)';
+            
+            grid.appendChild(card);
+        });
+
+    } catch (e) {
+        console.error("Error loading projects:", e);
+    }
+}
+
+// --- UPDATED: OPEN PROJECT (With Real-Time Progress) ---
+// --- UPDATED: OPEN PROJECT WITH LIVE PROGRESS ---
+async function openProject(projectId: string, projectName: string) {
+    // 1. Switch UI
+    document.getElementById('projectGrid')!.style.display = 'none';
+    const detailView = document.getElementById('projectDetailView')!;
+    detailView.style.display = 'block';
+    
+    document.getElementById('currentProjectTitle')!.textContent = projectName;
+    const tbody = document.getElementById('projectTasksBody')!;
+    tbody.innerHTML = '<tr><td colspan="5">Loading tasks...</td></tr>';
+
+    // 2. Fetch Tasks
+    try {
+        const querySnapshot = await getDocs(collection(db, "projects", projectId, "tasks"));
+        
+        const tasks: Task[] = [];
+        querySnapshot.forEach(doc => {
+            const data = doc.data() as any;
+            // Store the ID so we can update the specific task later
+            tasks.push({ id: doc.id, ...data });
+        });
+
+        // 3. Render and Calculate
+        renderProjectTasks(projectId, tasks);
+        updateProgressBar(tasks);
+
+    } catch (e) {
+        console.error("Error opening project:", e);
+    }
+}
+// --- RENDER TASKS WITH DROPDOWNS ---
+function renderProjectTasks(projectId: string, tasks: Task[]) {
+    const tbody = document.getElementById('projectTasksBody')!;
+    tbody.innerHTML = '';
+
+    tasks.forEach(task => {
+        const row = document.createElement('tr');
+        
+        // Create Dropdown Options
+        const statusOptions = ['Pending', 'In Progress', 'Done', 'Unassigned'];
+        const optionsHtml = statusOptions.map(opt => 
+            `<option value="${opt}" ${task.status === opt ? 'selected' : ''}>${opt}</option>`
+        ).join('');
+
+        row.innerHTML = `
+            <td style="font-weight:600;">${task.name}</td>
+            <td>${task.type}</td>
+            <td>${task.assignee}</td>
+            <td>
+                <select class="status-select" data-task-id="${task.id}" 
+                    style="background: ${getStatusColor(task.status)}; color: white;">
+                    ${optionsHtml}
+                </select>
+            </td>
+            <td><span class="badge ${getPriorityClass(task.priority)}">${task.priority}</span></td>
+        `;
+        tbody.appendChild(row);
+    });
+
+   // --- ATTACH LISTENERS FOR UPDATES ---
+    document.querySelectorAll('.status-select').forEach((select) => {
+        select.addEventListener('change', async (e) => {
+            const target = e.target as HTMLSelectElement;
+            const newStatus = target.value;
+            const taskId = target.getAttribute('data-task-id');
+
+            if (taskId) {
+                // 1. Visual Feedback (Instant)
+                target.style.background = getStatusColor(newStatus);
+                
+                // 2. Update Database
+                try {
+                    const taskRef = doc(db, "projects", projectId, "tasks", taskId);
+                    await updateDoc(taskRef, { status: newStatus });
+                } catch(err) {
+                    console.error("Failed to update DB", err);
+                }
+
+                // 3. Update Progress Bar Math
+                const taskIndex = tasks.findIndex(t => t.id === taskId);
+                if (taskIndex > -1) tasks[taskIndex].status = newStatus as any;
+                
+                updateProgressBar(tasks);
+            }
+        });
+    });
+}
+
+// --- MATH: CALCULATE PROGRESS ---
+// src/main.ts
+
+// --- MATH: CALCULATE PROGRESS ---
+// src/main.ts
+
+// --- UPDATED: 3-WAY PROGRESS CALCULATION ---
+function updateProgressBar(tasks: Task[]) {
+    // 1. Helper to calculate % for a specific type
+    const calculateTypeProgress = (types: string[]) => {
+        const typeTasks = tasks.filter(t => types.includes(t.type));
+        if (typeTasks.length === 0) return 0;
+        const done = typeTasks.filter(t => t.status === 'Done').length;
+        return Math.round((done / typeTasks.length) * 100);
+    };
+
+    // 2. Calculate Segments
+    const designProg = calculateTypeProgress(['Design', 'QA']);
+    const backendProg = calculateTypeProgress(['Backend', 'DevOps']);
+    const frontendProg = calculateTypeProgress(['Frontend']);
+    
+    // 3. Calculate Overall
+    const totalDone = tasks.filter(t => t.status === 'Done').length;
+    const totalProg = tasks.length ? Math.round((totalDone / tasks.length) * 100) : 0;
+
+    // 4. Update UI - DESIGN
+    updateBarUI('bar-design', 'text-design', designProg, '#05CD99'); // Green
+
+    // 5. Update UI - BACKEND
+    updateBarUI('bar-backend', 'text-backend', backendProg, '#FFB547'); // Orange
+
+    // 6. Update UI - FRONTEND
+    updateBarUI('bar-frontend', 'text-frontend', frontendProg, '#4318FF'); // Blue
+
+    // 7. Update Overall Text
+    const totalText = document.getElementById('totalProjectText');
+    if (totalText) totalText.textContent = `${totalProg}% Overall`;
+}
+
+// Helper to animate the bars
+function updateBarUI(barId: string, textId: string, percentage: number, color: string) {
+    const bar = document.getElementById(barId);
+    const text = document.getElementById(textId);
+    
+    if (bar) {
+        bar.style.width = `${percentage}%`;
+        bar.style.backgroundColor = percentage === 100 ? '#05CD99' : color;
+    }
+    if (text) {
+        text.textContent = `${percentage}%`;
+    }
+}
+// Back Button Logic
+document.getElementById('backToProjectsBtn')?.addEventListener('click', () => {
+    document.getElementById('projectDetailView')!.style.display = 'none';
+    document.getElementById('projectGrid')!.style.display = 'grid';
+});
 
 
 // --- CORE LOGIC (AI CONNECTION) ---
@@ -70,20 +271,13 @@ async function generateTasksFromBrief(text: string): Promise<Task[]> {
     const generateTasksFn = httpsCallable(functions, 'generateTasks');
     const result = await generateTasksFn({ text: text });
     
-    // The backend now returns { tasks: [ ... ] }
     const data = result.data as { tasks: any[] };
 
-    // TRANSFORM DATA (Fixing the field name mismatch)
     const aiTasks: Task[] = data.tasks.map((t, index) => ({
         id: t.id || `AI-${Date.now()}-${index}`,
         name: t.name,
-        
-        // ✅ CRITICAL FIX: The backend sends 'taskType', we map it to 'type'
         type: t.taskType || 'Backend', 
-        
-        // Smart Assignment
         assignee: assignTaskToExpert(t.taskType || 'Backend'), 
-        
         status: 'Pending',
         priority: t.priority || 'Medium',
         dueDate: "2025-12-25"
@@ -233,9 +427,21 @@ generateBtn.addEventListener('click', async () => {
 
   try {
     const tasks = await generateTasksFromBrief(text);
+    
+    currentGeneratedTasks = tasks;
+
     renderTaskTable(tasks);
     tasksSection.style.display = "block";
     statsSection.style.display = "block";
+    
+    // Reveal the "Save" button
+    const saveBtn = document.getElementById('saveTasksBtn') as HTMLButtonElement;
+    if (saveBtn) {
+        saveBtn.style.display = "block";
+        saveBtn.textContent = "Save to Project";
+        saveBtn.disabled = false;
+    }
+
     tasksSection.scrollIntoView({ behavior: 'smooth' });
   } catch (error) {
     console.error("Error:", error);
@@ -246,6 +452,57 @@ generateBtn.addEventListener('click', async () => {
     loader.style.display = "none";
   }
 });
+
+// --- UPDATED SAVE LISTENER (PROJECT FOLDER LOGIC) ---
+const saveTasksBtn = document.getElementById('saveTasksBtn');
+
+if (saveTasksBtn) {
+    saveTasksBtn.addEventListener('click', async () => {
+        if (currentGeneratedTasks.length === 0) return;
+        
+        // 1. THE FOLDER NAME: Ask user for a project name
+        const projectName = prompt("Enter a name for this project (e.g., 'Login Feature'):");
+        if (!projectName) return; // Cancelled
+
+        const btn = saveTasksBtn as HTMLButtonElement;
+        btn.textContent = "Saving...";
+        btn.disabled = true;
+
+        try {
+            // 2. CREATE THE FOLDER (Project Document)
+            const projectRef = await addDoc(collection(db, "projects"), {
+                name: projectName,
+                createdAt: new Date().toISOString(),
+                taskCount: currentGeneratedTasks.length,
+                status: 'Active'
+            });
+
+            // 3. PUT TASKS INSIDE THE FOLDER (Sub-collection)
+            const savePromises = currentGeneratedTasks.map(task => {
+                const { id, ...taskData } = task; 
+                // Notice the path: projects -> [ID] -> tasks
+                return addDoc(collection(db, "projects", projectRef.id, "tasks"), {
+                    ...taskData
+                });
+            });
+
+            await Promise.all(savePromises);
+            
+            alert(`Project "${projectName}" saved successfully!`);
+            btn.textContent = "Saved ✓";
+            
+            // If we are on the projects page, refresh it
+            loadProjectsFromDB();
+
+        } catch (error) {
+            console.error("Error saving project:", error);
+            alert("Failed to save project.");
+            btn.textContent = "Save to Project";
+            btn.disabled = false;
+        }
+    });
+}
+
 
 addTeamForm.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -262,12 +519,18 @@ navLinks.forEach(link => {
     link.addEventListener('click', (e) => {
         e.preventDefault();
         const targetSection = (e.target as HTMLElement).getAttribute('data-section');
+        
         views.forEach(view => (view as HTMLElement).style.display = 'none');
         navLinks.forEach(l => l.classList.remove('active'));
+
         if (targetSection) {
-            document.getElementById(targetSection + 'Section')!.style.display = 'block';
+            const sectionEl = document.getElementById(targetSection + 'Section');
+            if (sectionEl) sectionEl.style.display = 'block';
+            
             (e.target as HTMLElement).classList.add('active');
+            
             if (targetSection === 'team') renderTeamTable();
+            if (targetSection === 'projects') loadProjectsFromDB(); 
         }
     });
 });
